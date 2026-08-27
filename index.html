@@ -99,6 +99,10 @@
 
   .empty{text-align:center; padding:26px 10px; color:var(--ink-faint); font-size:12.5px; line-height:1.5; border:1.5px dashed var(--line); border-radius:var(--radius-md);}
 
+  .edit-field{width:100%; border:1.5px solid var(--line); border-radius:var(--radius-md); padding:12px 14px; font-family:var(--font-body); font-size:14px; margin-bottom:14px; background:var(--surface-soft); color:var(--ink);}
+  .edit-field.mono{font-family:var(--font-mono); font-size:16px;}
+  .tx-row{cursor:pointer;}
+
   .receipt{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); overflow:hidden;}
   .tx-row{display:flex; align-items:center; gap:11px; padding:12px 16px; border-bottom:1px dashed var(--line);}
   .tx-row:last-child{border-bottom:none;}
@@ -343,6 +347,29 @@
     <div class="fs-header"><button class="back-btn" id="closeFullscreen">←</button><h2>Gastos por categoría</h2></div>
     <p class="fs-sub">Este mes, con tus límites de presupuesto</p>
     <div class="fs-body" id="fsCapsuleGrid"></div>
+  </div>
+
+  <div class="fullscreen-overlay" id="editTxOverlay">
+    <div class="fs-header"><button class="back-btn" id="closeEditTx">←</button><h2>Editar movimiento</h2></div>
+    <div class="fs-body" style="display:block; padding-bottom:40px;">
+      <div class="type-toggle" id="editTypeToggle">
+        <button id="editBtnExpense" class="expense">💸 Gasto</button>
+        <button id="editBtnIncome" class="income">💰 Ingreso</button>
+      </div>
+      <div class="currency-row" id="editCurrencyRow">
+        <button data-cur="COP">COP</button>
+        <button data-cur="EUR">EUR</button>
+        <button data-cur="USD">USD</button>
+      </div>
+      <p class="field-label">Importe</p>
+      <input type="number" id="editAmount" step="0.01" min="0" class="edit-field mono">
+      <p class="field-label">Categoría</p>
+      <select id="editCategory" class="edit-field"></select>
+      <p class="field-label">Descripción</p>
+      <input type="text" id="editDescription" class="edit-field">
+      <button class="save-btn expense" id="saveEditTx" style="margin-bottom:10px;">Guardar cambios</button>
+      <button class="save-btn" id="deleteEditTx" style="background:var(--danger-soft); color:var(--danger);">Eliminar movimiento</button>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -594,7 +621,75 @@
 
   document.getElementById('screen').addEventListener('click', (e)=>{
     const delBtn = e.target.closest('[data-del]');
-    if(delBtn){ transactions = transactions.filter(t=> String(t.id)!==String(delBtn.dataset.del)); saveTransactions(); renderHome(); renderHistory(); }
+    if(delBtn){
+      transactions = transactions.filter(t=> String(t.id)!==String(delBtn.dataset.del));
+      saveTransactions(); renderHome(); renderHistory();
+      return;
+    }
+    const row = e.target.closest('.tx-row');
+    if(row){ openEditTx(row.dataset.id); }
+  });
+
+  /* ---------------- Edit transaction ---------------- */
+  let editingTxId = null, editType = 'expense', editCurrency = 'EUR';
+
+  function populateEditCategories(){
+    const sel = document.getElementById('editCategory');
+    const cats = editType === 'expense' ? expenseCats : incomeCats;
+    sel.innerHTML = cats.map(c=>`<option value="${c.key}">${c.icon} ${c.label}</option>`).join('');
+  }
+  function setEditType(type){
+    editType = type;
+    document.getElementById('editBtnExpense').classList.toggle('active', type==='expense');
+    document.getElementById('editBtnIncome').classList.toggle('active', type==='income');
+    document.getElementById('saveEditTx').className = 'save-btn ' + type;
+    populateEditCategories();
+  }
+  document.getElementById('editBtnExpense').addEventListener('click', ()=>setEditType('expense'));
+  document.getElementById('editBtnIncome').addEventListener('click', ()=>setEditType('income'));
+
+  function setEditCurrency(cur){
+    editCurrency = cur;
+    document.getElementById('editCurrencyRow').querySelectorAll('button').forEach(b=> b.classList.toggle('active', b.dataset.cur===cur));
+  }
+  document.getElementById('editCurrencyRow').querySelectorAll('button').forEach(b=> b.addEventListener('click', ()=> setEditCurrency(b.dataset.cur)));
+
+  function openEditTx(id){
+    const t = transactions.find(tx=> String(tx.id)===String(id));
+    if(!t) return;
+    editingTxId = t.id;
+    setEditType(t.type);
+    setEditCurrency(t.currency);
+    document.getElementById('editAmount').value = t.amount;
+    populateEditCategories();
+    document.getElementById('editCategory').value = t.category;
+    document.getElementById('editDescription').value = t.description || '';
+    document.getElementById('editTxOverlay').classList.add('open');
+  }
+  document.getElementById('closeEditTx').addEventListener('click', ()=>{
+    document.getElementById('editTxOverlay').classList.remove('open');
+  });
+  document.getElementById('saveEditTx').addEventListener('click', ()=>{
+    const t = transactions.find(tx=> tx.id === editingTxId);
+    if(!t) return;
+    const amount = parseFloat(document.getElementById('editAmount').value);
+    if(!amount || amount<=0){ showToast('Introduce un importe válido', 'warning'); return; }
+    t.type = editType;
+    t.currency = editCurrency;
+    t.amount = amount;
+    t.category = document.getElementById('editCategory').value;
+    t.description = document.getElementById('editDescription').value.trim();
+    saveTransactions();
+    document.getElementById('editTxOverlay').classList.remove('open');
+    showToast('Movimiento actualizado ✓');
+    renderHome(); renderHistory();
+  });
+  document.getElementById('deleteEditTx').addEventListener('click', ()=>{
+    transactions = transactions.filter(tx=> tx.id !== editingTxId);
+    saveTransactions();
+    document.getElementById('editTxOverlay').classList.remove('open');
+    showToast('Movimiento eliminado');
+    renderHome(); renderHistory();
   });
 
   /* ---------------- History ---------------- */
